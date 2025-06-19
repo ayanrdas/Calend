@@ -1,18 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
+  <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>2025 Interactive Calendar</title>
-  <!-- FullCalendar CSS -->
-  <link
-    href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.css"
-    rel="stylesheet"
-  />
+
+  <!-- FullCalendar global bundle (injects its own CSS & includes dayGrid, interaction, multimonth, etc.) -->
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js"></script> <!-- :contentReference[oaicite:1]{index=1} -->
+
   <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
     #calendar { max-width: 900px; margin: 0 auto; }
-    /* Modal overlay */
     .modal {
       display: none;
       position: fixed; top: 0; left: 0;
@@ -50,59 +48,57 @@
     </div>
   </div>
 
-  <!-- FullCalendar JS -->
-  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.js"></script>
   <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      // load stored data or init empty object
+    document.addEventListener('DOMContentLoaded', () => {
+      // Load or init storage
       const stored = JSON.parse(localStorage.getItem('calendar2025')) || {};
-      let selectedDate = null;
+      let calendar, selectedDate;
 
-      const modal = document.getElementById('taskModal');
-      const modalDateEl = document.getElementById('modalDate');
-      const taskInput   = document.getElementById('taskInput');
-      const colorInput  = document.getElementById('colorInput');
-      const saveBtn     = document.getElementById('saveBtn');
-      const cancelBtn   = document.getElementById('cancelBtn');
+      // Modal elements
+      const modal     = document.getElementById('taskModal');
+      const modalDate = document.getElementById('modalDate');
+      const taskInput = document.getElementById('taskInput');
+      const colorInput= document.getElementById('colorInput');
+      const saveBtn   = document.getElementById('saveBtn');
+      const cancelBtn = document.getElementById('cancelBtn');
 
-      // initialize FullCalendar
-      const calendar = new FullCalendar.Calendar(
-        document.getElementById('calendar'),
-        {
-          initialView: 'dayGridMonth',
-          initialDate: '2025-06-01',
-          validRange: { start: '2025-01-01', end: '2025-12-31' },
-          headerToolbar: { left: 'prev,next', center: 'title', right: '' },
-          dateClick: info => {
-            selectedDate = info.dateStr;
-            modalDateEl.textContent = selectedDate;
-
-            // prefill inputs if existing
-            const entry = stored[selectedDate] || { tasks: '', color: '#ffffff' };
-            taskInput.value  = entry.tasks;
-            colorInput.value = entry.color;
-
-            modal.style.display = 'flex';
-          },
-          dayCellDidMount: info => {
-            const d = info.date.toISOString().slice(0,10);
-            if (stored[d]) {
-              info.el.style.backgroundColor = stored[d].color;
-              if (stored[d].tasks) {
-                const div = document.createElement('div');
-                div.textContent = stored[d].tasks;
-                div.style.fontSize = '0.75em';
-                div.style.marginTop = '4px';
-                info.el.appendChild(div);
+      // Render (or re-render) the calendar
+      function renderCalendar() {
+        if (calendar) calendar.destroy();
+        calendar = new FullCalendar.Calendar(
+          document.getElementById('calendar'),
+          {
+            initialView: 'dayGridMonth',
+            initialDate: '2025-06-01',
+            validRange: { start: '2025-01-01', end: '2025-12-31' },
+            headerToolbar: { left: 'prev,next', center: 'title', right: '' },
+            dateClick: info => {
+              selectedDate = info.dateStr;
+              modalDate.textContent = selectedDate;
+              const entry = stored[selectedDate] || { tasks: '', color: '#ffffff' };
+              taskInput.value  = entry.tasks;
+              colorInput.value = entry.color;
+              modal.style.display = 'flex';
+            },
+            dayCellDidMount: info => {
+              const d = info.date.toISOString().slice(0,10);
+              if (stored[d]) {
+                info.el.style.backgroundColor = stored[d].color;
+                if (stored[d].tasks) {
+                  const div = document.createElement('div');
+                  div.textContent = stored[d].tasks;
+                  div.style.fontSize = '0.75em';
+                  div.style.marginTop = '4px';
+                  info.el.appendChild(div);
+                }
               }
             }
           }
-        }
-      );
+        );
+        calendar.render();
+      }
 
-      calendar.render();
-
-      // Save button
+      // Wire up buttons
       saveBtn.addEventListener('click', () => {
         stored[selectedDate] = {
           tasks: taskInput.value,
@@ -110,14 +106,12 @@
         };
         localStorage.setItem('calendar2025', JSON.stringify(stored));
         modal.style.display = 'none';
-        calendar.destroy();
-        calendar.render();
+        renderCalendar();
       });
+      cancelBtn.addEventListener('click', () => modal.style.display = 'none');
 
-      // Cancel button
-      cancelBtn.addEventListener('click', () => {
-        modal.style.display = 'none';
-      });
+      // First render
+      renderCalendar();
     });
   </script>
 </body>
