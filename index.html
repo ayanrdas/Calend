@@ -1,34 +1,67 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Interactive 2025 Calendar</title>
-  <!-- FullCalendar CSS -->
-  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.css" rel="stylesheet"/>
+
+  <!-- FullCalendar styles -->
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.css" rel="stylesheet" />
+
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-    #calendar { max-width: 900px; margin: 0 auto; }
-    /* Modal overlay */
-    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; }
-    .modal-content { background: #fff; padding: 20px; border-radius: 4px; width: 300px; }
-    .modal-content label { display: block; margin-top: 10px; }
-    .modal-content textarea, .modal-content input[type="color"] { width: 100%; box-sizing: border-box; }
-    .modal-content button { margin-top: 10px; }
+    :root { --modal-bg: rgba(0,0,0,.6); }
+    body { font-family: system-ui, sans-serif; margin:0; padding:20px; background:#f7f7f7; }
+    #calendar { max-width: 900px; margin:0 auto; }
+
+    /* ──────────  Modal styles  ────────── */
+    .modal {
+      display: none;                /* hidden by default */
+      position: fixed; inset: 0;    /* full‑screen overlay */
+      background: var(--modal-bg);  /* translucent dark */
+      align-items: center; justify-content: center;
+      z-index: 1000;                /* above FullCalendar */
+    }
+    .modal-content {
+      background:#fff; padding:20px; border-radius:6px; width:320px;
+      box-shadow:0 6px 18px rgba(0,0,0,.3);
+    }
+    .modal-content h3 { margin:0 0 8px 0; font-size:1.1rem; }
+    .modal-content label { display:block; margin-top:10px; font-weight:600; }
+    .modal-content textarea {
+      width:100%; min-height:70px; resize:vertical;
+      padding:6px; font-size:.9rem; border:1px solid #ccc; border-radius:4px;
+      box-sizing:border-box;
+    }
+    .modal-content input[type="color"] {
+      width:100%; height:35px; margin-top:4px; border:none; cursor:pointer;
+      padding:0; background:none;
+    }
+    .btns { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; }
+    .btns button {
+      padding:6px 12px; cursor:pointer; border:1px solid #999;
+      background:#eee; border-radius:4px; font-size:.9rem;
+    }
+    .btns button:hover { background:#e2e2e2; }
+
+    /* tasks shown inside a day cell */
+    .task-text { white-space:pre-wrap; }
   </style>
 </head>
 <body>
   <div id="calendar"></div>
 
-  <!-- Modal for task entry -->
-  <div id="taskModal" class="modal">
+  <!-- Modal -->
+  <div id="taskModal" class="modal" role="dialog" aria-modal="true">
     <div class="modal-content">
-      <h3 id="modalDate">YYYY-MM-DD</h3>
-      <label>Tasks:</label>
-      <textarea id="taskInput" rows="4" placeholder="Enter tasks…"></textarea>
-      <label>Cell Color:</label>
-      <input type="color" id="colorInput" value="#ffff00"/>
-      <div style="text-align: right;">
+      <h3 id="modalDate">2025-01-01</h3>
+
+      <label for="taskInput">Tasks:</label>
+      <textarea id="taskInput" placeholder="Enter tasks…"></textarea>
+
+      <label for="colorInput">Cell Color:</label>
+      <input type="color" id="colorInput" value="#ffff00" />
+
+      <div class="btns">
         <button id="saveBtn">Save</button>
         <button id="cancelBtn">Cancel</button>
       </div>
@@ -40,66 +73,83 @@
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       const STORAGE_KEY = 'calendar2025';
-      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      let selectedDate = null;
+      const stored      = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
 
       // Modal elements
-      const modal = document.getElementById('taskModal');
-      const modalDateEl = document.getElementById('modalDate');
-      const taskInput   = document.getElementById('taskInput');
-      const colorInput  = document.getElementById('colorInput');
-      const saveBtn     = document.getElementById('saveBtn');
-      const cancelBtn   = document.getElementById('cancelBtn');
+      const modal      = document.getElementById('taskModal');
+      const modalDate  = document.getElementById('modalDate');
+      const taskInput  = document.getElementById('taskInput');
+      const colorInput = document.getElementById('colorInput');
+      const saveBtn    = document.getElementById('saveBtn');
+      const cancelBtn  = document.getElementById('cancelBtn');
 
+      let selectedDate = null;
       let calendar;
-      function renderCalendar() {
+
+      function drawCalendar() {
         if (calendar) calendar.destroy();
+
         calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
-          initialView: 'dayGridMonth',
-          initialDate: '2025-06-01',
-          validRange: { start: '2025-01-01', end: '2025-12-31' },
+          initialView : 'dayGridMonth',
+          initialDate : '2025-06-01',
+          validRange  : { start: '2025-01-01', end: '2025-12-31' },
           headerToolbar: { left: 'prev,next', center: 'title', right: '' },
-          dateClick: info => {
-            selectedDate = info.dateStr;
-            modalDateEl.textContent = selectedDate;
-            const entry = stored[selectedDate] || { tasks: '', color: '#ffffff' };
-            taskInput.value  = entry.tasks;
-            colorInput.value = entry.color;
+          height      : 'auto',
+
+          dateClick(info) {
+            selectedDate        = info.dateStr;
+            modalDate.textContent = selectedDate;
+
+            // Prefill existing values (if any)
+            const data      = stored[selectedDate] || { tasks: '', color: '#ffffff' };
+            taskInput.value = data.tasks;
+            colorInput.value = data.color || '#ffffff';
+
             modal.style.display = 'flex';
+            taskInput.focus();
           },
-          dayCellDidMount: info => {
-            const d = info.date.toISOString().slice(0,10);
-            if (stored[d]) {
-              info.el.style.backgroundColor = stored[d].color;
-              if (stored[d].tasks) {
+
+          // Apply saved styles/tasks when each day cell is drawn
+          dayCellDidMount(cell) {
+            const dateKey = cell.date.toISOString().slice(0,10);
+            if (stored[dateKey]) {
+              cell.el.style.backgroundColor = stored[dateKey].color;
+              if (stored[dateKey].tasks) {
                 const div = document.createElement('div');
-                div.textContent = stored[d].tasks;
+                div.textContent = stored[dateKey].tasks;
+                div.className   = 'task-text';
                 div.style.fontSize = '0.75em';
                 div.style.marginTop = '4px';
-                div.classList.add('task-text');
-                info.el.appendChild(div);
+                cell.el.appendChild(div);
               }
             }
           }
         });
+
         calendar.render();
       }
 
-      renderCalendar();
+      drawCalendar();
 
-      // Save to localStorage and refresh calendar
+      // ────────── Modal buttons ──────────
       saveBtn.addEventListener('click', () => {
+        if (!selectedDate) return;
         stored[selectedDate] = {
           tasks: taskInput.value.trim(),
           color: colorInput.value
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
         modal.style.display = 'none';
-        renderCalendar();
+        drawCalendar();
       });
 
       cancelBtn.addEventListener('click', () => {
         modal.style.display = 'none';
+      });
+
+      // Close when you click the dark overlay (but not the dialog)
+      modal.addEventListener('click', e => {
+        if (e.target === modal) modal.style.display = 'none';
       });
     });
   </script>
