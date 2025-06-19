@@ -15,11 +15,8 @@
 
     /* ──────────  Modal styles  ────────── */
     .modal {
-      display: none;                /* hidden by default */
-      position: fixed; inset: 0;    /* full‑screen overlay */
-      background: var(--modal-bg);  /* translucent dark */
-      align-items: center; justify-content: center;
-      z-index: 1000;                /* above FullCalendar */
+      display: none; position: fixed; inset: 0; background: var(--modal-bg);
+      align-items: center; justify-content: center; z-index: 1000;
     }
     .modal-content {
       background:#fff; padding:20px; border-radius:6px; width:320px;
@@ -43,7 +40,6 @@
     }
     .btns button:hover { background:#e2e2e2; }
 
-    /* tasks shown inside a day cell */
     .task-text { white-space:pre-wrap; }
   </style>
 </head>
@@ -68,14 +64,36 @@
     </div>
   </div>
 
+  <!-- Firebase SDKs (compat builds for simplicity) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
   <!-- FullCalendar JS (global build) -->
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      const STORAGE_KEY = 'calendar2025';
-      const stored      = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      /* ──── 1 ▸  PUT YOUR OWN FIREBASE CONFIG HERE  ──── */
+      const firebaseConfig = {
+  	apiKey: "AIzaSyCRhtIPS3YBOy4s3I3KOFxGj9vYx4vhJ4c",
+  	authDomain: "calend-6b75b.firebaseapp.com",
+  	projectId: "calend-6b75b",
+  	storageBucket: "calend-6b75b.firebasestorage.app",
+  	messagingSenderId: "795598983615",
+  	appId: "1:795598983615:web:1c92381f835c487083d10a",
+  	measurementId: "G-6RGM31DBSZ"
+      };
+	
 
-      // Modal elements
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.firestore();
+      const docRef = db.collection('calendars').doc('2025'); // single document that stores all days
+
+      /* ──── 2 ▸  LOCAL FALLBACK (optional)  ──── */
+      const LOCAL_KEY = 'calendar2025_backup';
+      const localCopy = JSON.parse(localStorage.getItem(LOCAL_KEY) || '{}');
+
+      /* ──── 3 ▸  UI ELEMENTS  ──── */
       const modal      = document.getElementById('taskModal');
       const modalDate  = document.getElementById('modalDate');
       const taskInput  = document.getElementById('taskInput');
@@ -83,9 +101,11 @@
       const saveBtn    = document.getElementById('saveBtn');
       const cancelBtn  = document.getElementById('cancelBtn');
 
+      let dataStore    = {};  // in‑memory copy from Firestore
       let selectedDate = null;
       let calendar;
 
+      /* ──── 4 ▸  DRAW / REDRAW CALENDAR  ──── */
       function drawCalendar() {
         if (calendar) calendar.destroy();
 
@@ -99,25 +119,21 @@
           dateClick(info) {
             selectedDate        = info.dateStr;
             modalDate.textContent = selectedDate;
-
-            // Prefill existing values (if any)
-            const data      = stored[selectedDate] || { tasks: '', color: '#ffffff' };
-            taskInput.value = data.tasks;
-            colorInput.value = data.color || '#ffffff';
-
-            modal.style.display = 'flex';
+            const current        = dataStore[selectedDate] || { tasks:'', color:'#ffffff' };
+            taskInput.value      = current.tasks;
+            colorInput.value     = current.color || '#ffffff';
+            modal.style.display  = 'flex';
             taskInput.focus();
           },
 
-          // Apply saved styles/tasks when each day cell is drawn
           dayCellDidMount(cell) {
-            const dateKey = cell.date.toISOString().slice(0,10);
-            if (stored[dateKey]) {
-              cell.el.style.backgroundColor = stored[dateKey].color;
-              if (stored[dateKey].tasks) {
+            const key = cell.date.toISOString().slice(0,10);
+            if (dataStore[key]) {
+              cell.el.style.backgroundColor = dataStore[key].color;
+              if (dataStore[key].tasks) {
                 const div = document.createElement('div');
-                div.textContent = stored[dateKey].tasks;
-                div.className   = 'task-text';
+                div.textContent  = dataStore[key].tasks;
+                div.className    = 'task-text';
                 div.style.fontSize = '0.75em';
                 div.style.marginTop = '4px';
                 cell.el.appendChild(div);
@@ -129,28 +145,57 @@
         calendar.render();
       }
 
-      drawCalendar();
+      /* ──── 5 ▸  LOAD DATA FROM FIRESTORE THEN DRAW  ──── */
+      function initialLoad() {
+        docRef.get().then(docSnap => {
+          if (docSnap.exists) {
+            dataStore = docSnap.data();
+          } else {
+            dataStore = localCopy; // first timer? pull any local edits as seed
+          }
+          drawCalendar();
+        }).catch(err => {
+          console.error('Firestore read failed → falling back to local copy', err);
+          dataStore = localCopy;
+          drawCalendar();
+        });
+      }
 
-      // ────────── Modal buttons ──────────
+      initialLoad();
+
+      /* ──── 6 ▸  REAL‑TIME UPDATES (listen for others’ edits)  ──── */
+      docRef.onSnapshot(snap => {
+        if (snap.exists) {
+          dataStore = snap.data();
+          drawCalendar();
+        }
+      });
+
+      /* ──── 7 ▸  SAVE HANDLER  ──── */
       saveBtn.addEventListener('click', () => {
         if (!selectedDate) return;
-        stored[selectedDate] = {
+        dataStore[selectedDate] = {
           tasks: taskInput.value.trim(),
           color: colorInput.value
         };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
-        modal.style.display = 'none';
-        drawCalendar();
+
+        // Save to Firestore
+        docRef.set(dataStore).then(() => {
+          // also keep local backup
+          localStorage.setItem(LOCAL_KEY, JSON.stringify(dataStore));
+          modal.style.display = 'none';
+          drawCalendar();
+        }).catch(err => {
+          alert('Error while saving to the cloud. Check console.');
+          console.error(err);
+        });
       });
 
       cancelBtn.addEventListener('click', () => {
         modal.style.display = 'none';
       });
 
-      // Close when you click the dark overlay (but not the dialog)
-      modal.addEventListener('click', e => {
-        if (e.target === modal) modal.style.display = 'none';
-      });
+      modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
     });
   </script>
 </body>
